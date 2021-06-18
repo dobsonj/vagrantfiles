@@ -65,7 +65,11 @@ Vagrant.configure("2") do |config|
   config.vm.provision "shell", inline: <<-SHELL
     # install essential build tools
     apt-get update
-    apt-get install -y build-essential docker.io gcc jq etcd
+    apt-get install -y build-essential docker.io gcc jq net-tools etcd
+
+    # stop etcd from running automatically, it will run as part of up-local-cluster.sh
+    systemctl disable etcd
+    systemctl stop etcd
 
     # download and install latest kubectl
     wget -q -P /tmp "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
@@ -77,8 +81,26 @@ Vagrant.configure("2") do |config|
     tar -C /usr/local -xzf /tmp/${GO_VERSION}.linux-amd64.tar.gz
     rm /tmp/kubectl /tmp/${GO_VERSION}.linux-amd64.tar.gz
 
+    # coredns will not start if there is a localhost address in resolv.conf
+    sudo systemctl disable systemd-resolved
+    sudo systemctl stop systemd-resolved
+    rm /etc/resolv.conf
+    echo 'nameserver 192.168.1.1' > /etc/resolv.conf
+
     # add vagrant user to appropriate groups
     usermod -a -G docker,kvm,etcd vagrant
+
+    # setup root home directory
+    mkdir -p ~/go/bin ~/go/src
+    echo "export GOPATH=\$HOME/go" >> ~/.bashrc
+    echo "export PATH=\$PATH:\$HOME/go/bin:/usr/local/go/bin" >> ~/.bashrc
+    cp /workspace/dotfiles/.vimrc ~/
+    cp /workspace/dotfiles/.screenrc ~/
+    ln -s /workspace ~/workspace
+
+    # install delve debugger (root only, to attach to root processes like kubelet)
+    export GOPATH=$HOME/go
+    /usr/local/go/bin/go install github.com/go-delve/delve/cmd/dlv@latest
 
     # setup vagrant home directory
     su vagrant -c 'mkdir -p ~/go/bin ~/go/src'
@@ -87,5 +109,8 @@ Vagrant.configure("2") do |config|
     su vagrant -c 'cp /workspace/dotfiles/.vimrc ~/'
     su vagrant -c 'cp /workspace/dotfiles/.screenrc ~/'
     su vagrant -c 'ln -s /workspace ~/workspace'
+
+    # install kubetest
+    su vagrant -c 'cd ~/go/src && git clone https://github.com/kubernetes/test-infra.git && cd test-infra && GOPATH=$HOME/go GO111MODULE=on /usr/local/go/bin/go install ./kubetest'
   SHELL
 end
