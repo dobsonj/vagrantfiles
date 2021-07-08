@@ -1,0 +1,113 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+# All Vagrant configuration is done below. The "2" in Vagrant.configure
+# configures the configuration version (we support older styles for
+# backwards compatibility). Please don't change it unless you know what
+# you're doing.
+Vagrant.configure("2") do |config|
+  # The most common configuration options are documented and commented below.
+  # For a complete reference, please see the online documentation at
+  # https://docs.vagrantup.com.
+
+  # Every Vagrant development environment requires a box. You can search for
+  # boxes at https://vagrantcloud.com/search.
+  config.vm.box = "fedora/34-cloud-base"
+  config.vm.box_version = "34.20210423.0"
+  config.vm.hostname = "f34-cloud"
+  config.vm.define "f34-cloud"
+
+  # Disable automatic box update checking. If you disable this, then
+  # boxes will only be checked for updates when the user runs
+  # `vagrant box outdated`. This is not recommended.
+  # config.vm.box_check_update = false
+
+  # Create a forwarded port mapping which allows access to a specific port
+  # within the machine from a port on the host machine. In the example below,
+  # accessing "localhost:8080" will access port 80 on the guest machine.
+  # NOTE: This will enable public access to the opened port
+  # config.vm.network "forwarded_port", guest: 80, host: 8080
+
+  # Create a forwarded port mapping which allows access to a specific port
+  # within the machine from a port on the host machine and only allow access
+  # via 127.0.0.1 to disable public access
+  # config.vm.network "forwarded_port", guest: 80, host: 8080, host_ip: "127.0.0.1"
+
+  # Create a private network, which allows host-only access to the machine
+  # using a specific IP.
+  # config.vm.network "private_network", ip: "192.168.33.10"
+
+  # Create a public network, which generally matched to bridged network.
+  # Bridged networks make the machine appear as another physical device on
+  # your network.
+  # config.vm.network "public_network"
+
+  # Share an additional folder to the guest VM. The first argument is
+  # the path on the host to the actual folder. The second argument is
+  # the path on the guest to mount the folder. And the optional third
+  # argument is a set of non-required options.
+  config.vm.synced_folder "#{Dir.home}/workspace", "/workspace", type: "nfs", nfs_udp: false
+
+  # Provider-specific configuration so you can fine-tune various
+  # backing providers for Vagrant. These expose provider-specific options.
+  config.vm.provider :libvirt do |libvirt|
+    # https://github.com/vagrant-libvirt/vagrant-libvirt/blob/master/README.md
+    libvirt.driver = "kvm"
+    libvirt.cpus = 8
+    libvirt.memory = 16384
+    libvirt.nested = true
+    libvirt.volume_cache = "none"
+    #libvirt.random_hostname = true 
+  end
+
+  # Enable provisioning with a shell script. Additional provisioners such as
+  # Ansible, Chef, Docker, Puppet and Salt are also available. Please see the
+  # documentation for more information about their specific syntax and use.
+  config.vm.provision "shell", inline: <<-SHELL
+    # install essential build tools
+    dnf -y install dnf-plugins-core
+    dnf config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo
+    dnf -y groupinstall "Development Tools"
+    dnf -y remove nano-default-editor
+    dnf -y install vim vim-default-editor git-subtree binwalk htop screen nmon etcd jq python3-pyyaml wget openssl
+    dnf -y install docker-ce docker-ce-cli containerd.io
+    systemctl enable docker
+    systemctl start docker
+
+    # download and install latest kubectl
+    wget -q -P /tmp "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+    install -o root -g root -m 0755 /tmp/kubectl /usr/local/bin/kubectl
+
+    # download and install latest golang
+    GO_VERSION=$(curl -s https://golang.org/VERSION?m=text)
+    wget -q -P /tmp https://golang.org/dl/${GO_VERSION}.linux-amd64.tar.gz
+    tar -C /usr/local -xzf /tmp/${GO_VERSION}.linux-amd64.tar.gz
+    rm /tmp/kubectl /tmp/${GO_VERSION}.linux-amd64.tar.gz
+
+    # coredns will not start if there is a localhost address in resolv.conf
+    systemctl disable systemd-resolved
+    systemctl stop systemd-resolved
+    rm /etc/resolv.conf
+    echo 'nameserver 192.168.1.1' > /etc/resolv.conf
+
+    # add vagrant user to appropriate groups
+    usermod -a -G docker,kvm,etcd vagrant
+
+    # setup vagrant home directory
+    su vagrant -c 'mkdir -p ~/go/bin ~/go/src'
+    su vagrant -c 'echo "export GOPATH=\\$HOME/go" >> ~/.bashrc'
+    su vagrant -c 'echo "export PATH=\\$PATH:\\$HOME/go/bin:/usr/local/go/bin" >> ~/.bashrc'
+    su vagrant -c 'cp /workspace/dotfiles/.vimrc ~/'
+    su vagrant -c 'cp /workspace/dotfiles/.screenrc ~/'
+    su vagrant -c 'ln -s /workspace ~/workspace'
+
+    # upgrade to get the 5.12 kernel
+    dnf -y update
+  SHELL
+
+  # reload after provisioning to load the new kernel
+  # requires the vagrant-reload plugin, install with:
+  #   vagrant plugin install vagrant-reload
+  config.vm.provision :reload
+end
+
