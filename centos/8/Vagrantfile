@@ -12,9 +12,9 @@ Vagrant.configure("2") do |config|
 
   # Every Vagrant development environment requires a box. You can search for
   # boxes at https://vagrantcloud.com/search.
-  config.vm.box = "generic/fedora34"
-  config.vm.hostname = "fedora34"
-  config.vm.define "fedora34"
+  config.vm.box = "generic/centos8"
+  config.vm.hostname = "centos8"
+  config.vm.define "centos8"
 
   # Disable automatic box update checking. If you disable this, then
   # boxes will only be checked for updates when the user runs
@@ -64,41 +64,7 @@ Vagrant.configure("2") do |config|
   # documentation for more information about their specific syntax and use.
   config.vm.provision "shell", inline: <<-SHELL
     # install essential build tools
-    dnf -y install dnf-plugins-core
-    dnf config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo
     dnf -y groupinstall "Development Tools"
-    dnf -y remove nano-default-editor
-    dnf -y install vim vim-default-editor git-subtree binwalk htop screen nmon etcd jq python3-pyyaml wget openssl
-    dnf -y install docker-ce docker-ce-cli containerd.io
-    systemctl enable docker
-    systemctl start docker
-
-    # download and install latest kubectl
-    wget -q -P /tmp "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-    install -o root -g root -m 0755 /tmp/kubectl /usr/local/bin/kubectl
-
-    # download and install latest golang
-    GO_VERSION=$(curl -s https://golang.org/VERSION?m=text)
-    wget -q -P /tmp https://golang.org/dl/${GO_VERSION}.linux-amd64.tar.gz
-    tar -C /usr/local -xzf /tmp/${GO_VERSION}.linux-amd64.tar.gz
-    rm /tmp/kubectl /tmp/${GO_VERSION}.linux-amd64.tar.gz
-
-    # coredns will not start if there is a localhost address in resolv.conf
-    systemctl disable systemd-resolved
-    systemctl stop systemd-resolved
-    rm /etc/resolv.conf
-    echo 'nameserver 192.168.1.1' > /etc/resolv.conf
-
-    # add vagrant user to appropriate groups
-    usermod -a -G docker,kvm,etcd vagrant
-
-    # setup vagrant home directory
-    su vagrant -c 'mkdir -p ~/go/bin ~/go/src'
-    su vagrant -c 'echo "export GOPATH=\\$HOME/go" >> ~/.bashrc'
-    su vagrant -c 'echo "export PATH=\\$PATH:\\$HOME/go/bin:/usr/local/go/bin" >> ~/.bashrc'
-    su vagrant -c 'cp /workspace/dotfiles/.vimrc ~/'
-    su vagrant -c 'cp /workspace/dotfiles/.screenrc ~/'
-    su vagrant -c 'ln -s /workspace ~/workspace'
+    dnf -y install vim git-subtree htop screen nmon jq python3-pyyaml
   SHELL
 end
-
