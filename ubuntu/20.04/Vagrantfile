@@ -52,8 +52,8 @@ Vagrant.configure("2") do |config|
   config.vm.provider :libvirt do |libvirt|
     # https://github.com/vagrant-libvirt/vagrant-libvirt/blob/master/README.md
     libvirt.driver = "kvm"
-    libvirt.cpus = 8
-    libvirt.memory = 16384
+    libvirt.cpus = 4
+    libvirt.memory = 8192
     libvirt.nested = true
     libvirt.volume_cache = "none"
     #libvirt.random_hostname = true 
@@ -65,30 +65,26 @@ Vagrant.configure("2") do |config|
   config.vm.provision "shell", inline: <<-SHELL
     # install essential build tools
     apt-get update
-    apt-get install -y build-essential docker.io gcc jq net-tools etcd
-
-    # stop etcd from running automatically, it will run as part of up-local-cluster.sh
-    systemctl disable etcd
-    systemctl stop etcd
+    apt-get install -y build-essential docker.io gcc jq net-tools
 
     # download and install latest kubectl
     wget -q -P /tmp "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
     install -o root -g root -m 0755 /tmp/kubectl /usr/local/bin/kubectl
 
     # download and install latest golang
-    GO_VERSION=$(curl -s https://golang.org/VERSION?m=text)
-    wget -q -P /tmp https://golang.org/dl/${GO_VERSION}.linux-amd64.tar.gz
+    GO_VERSION=$(curl -s https://go.dev/VERSION?m=text)
+    wget -q -P /tmp https://go.dev/dl/${GO_VERSION}.linux-amd64.tar.gz
     tar -C /usr/local -xzf /tmp/${GO_VERSION}.linux-amd64.tar.gz
     rm /tmp/kubectl /tmp/${GO_VERSION}.linux-amd64.tar.gz
 
     # coredns will not start if there is a localhost address in resolv.conf
-    sudo systemctl disable systemd-resolved
-    sudo systemctl stop systemd-resolved
+    systemctl disable systemd-resolved
+    systemctl stop systemd-resolved
     rm /etc/resolv.conf
-    echo 'nameserver 192.168.1.1' > /etc/resolv.conf
+    echo 'nameserver 1.1.1.1' > /etc/resolv.conf
 
     # add vagrant user to appropriate groups
-    usermod -a -G docker,kvm,etcd vagrant
+    usermod -a -G docker,kvm vagrant
 
     # setup root home directory
     mkdir -p ~/go/bin ~/go/src
@@ -100,7 +96,7 @@ Vagrant.configure("2") do |config|
 
     # install delve debugger (root only, to attach to root processes like kubelet)
     export GOPATH=$HOME/go
-    /usr/local/go/bin/go install github.com/go-delve/delve/cmd/dlv@latest
+    #/usr/local/go/bin/go install github.com/go-delve/delve/cmd/dlv@latest
 
     # setup vagrant home directory
     su vagrant -c 'mkdir -p ~/go/bin ~/go/src'
@@ -111,6 +107,6 @@ Vagrant.configure("2") do |config|
     su vagrant -c 'ln -s /workspace ~/workspace'
 
     # install kubetest
-    su vagrant -c 'cd ~/go/src && git clone https://github.com/kubernetes/test-infra.git && cd test-infra && GOPATH=$HOME/go GO111MODULE=on /usr/local/go/bin/go install ./kubetest'
+    #su vagrant -c 'cd ~/go/src && git clone https://github.com/kubernetes/test-infra.git && cd test-infra && GOPATH=$HOME/go GO111MODULE=on /usr/local/go/bin/go install ./kubetest'
   SHELL
 end
