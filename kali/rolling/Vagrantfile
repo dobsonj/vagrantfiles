@@ -45,7 +45,7 @@ Vagrant.configure("2") do |config|
   # the path on the host to the actual folder. The second argument is
   # the path on the guest to mount the folder. And the optional third
   # argument is a set of non-required options.
-  #config.vm.synced_folder "#{Dir.home}/workspace", "/workspace", type: "nfs", nfs_version: 3, nfs_udp: true
+  #config.vm.synced_folder "#{Dir.home}/workspace/ctf", "/workspace/ctf", type: "nfs", nfs_version: 3, nfs_udp: true
 
   # Provider-specific configuration so you can fine-tune various
   # backing providers for Vagrant. These expose provider-specific options.
@@ -53,18 +53,23 @@ Vagrant.configure("2") do |config|
     # https://github.com/vagrant-libvirt/vagrant-libvirt/blob/master/README.md
     libvirt.driver = "kvm"
     libvirt.cpus = 8
-    libvirt.memory = 16384
+    libvirt.memory = 8192
     libvirt.nested = true
     libvirt.volume_cache = "none"
-    #libvirt.random_hostname = true 
+    libvirt.graphics_ip = "127.0.0.1"
+    libvirt.graphics_port = 5901
+    libvirt.graphics_type = "vnc"
   end
 
   # Enable provisioning with a shell script. Additional provisioners such as
   # Ansible, Chef, Docker, Puppet and Salt are also available. Please see the
   # documentation for more information about their specific syntax and use.
-  #config.vm.provision "shell", inline: <<-SHELL
-  #  # install essential build tools
-  #  apt-get update
-  #  apt-get install -y build-essential docker.io gcc jq etcd
-  #SHELL
+  config.vm.provision "shell", inline: <<-SHELL
+    # install essential tools
+    apt-get update
+    apt-get install -y build-essential docker.io gcc jq vim
+    apt-get install -y gdb
+    # GEF - GDB Enhanced Features
+    bash -c "$(curl -fsSL http://gef.blah.cat/sh)"
+  SHELL
 end
