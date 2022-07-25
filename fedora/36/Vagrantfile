@@ -12,9 +12,9 @@ Vagrant.configure("2") do |config|
 
   # Every Vagrant development environment requires a box. You can search for
   # boxes at https://vagrantcloud.com/search.
-  config.vm.box = "generic/centos8"
-  config.vm.hostname = "centos8"
-  config.vm.define "centos8"
+  config.vm.box = "generic/fedora36"
+  config.vm.hostname = "fedora36"
+  config.vm.define "fedora36"
 
   # Disable automatic box update checking. If you disable this, then
   # boxes will only be checked for updates when the user runs
@@ -45,14 +45,14 @@ Vagrant.configure("2") do |config|
   # the path on the host to the actual folder. The second argument is
   # the path on the guest to mount the folder. And the optional third
   # argument is a set of non-required options.
-  #config.vm.synced_folder "#{Dir.home}/workspace", "/workspace", type: "nfs", nfs_udp: false
+  config.vm.synced_folder "#{Dir.home}/workspace", "/workspace", type: "nfs", nfs_udp: false
 
   # Provider-specific configuration so you can fine-tune various
   # backing providers for Vagrant. These expose provider-specific options.
   config.vm.provider :libvirt do |libvirt|
     # https://github.com/vagrant-libvirt/vagrant-libvirt/blob/master/README.md
     libvirt.driver = "kvm"
-    libvirt.cpus = 4
+    libvirt.cpus = 16
     libvirt.memory = 8192
     #libvirt.nested = true
     #libvirt.volume_cache = "none"
@@ -64,11 +64,54 @@ Vagrant.configure("2") do |config|
   # documentation for more information about their specific syntax and use.
   config.vm.provision "shell", inline: <<-SHELL
     # install essential build tools
+    dnf -y install dnf-plugins-core
     dnf -y groupinstall "Development Tools"
-    dnf -y install vim git-subtree htop screen nmon jq python3-pyyaml rsync
-    dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
-    dnf -y install docker-ce docker-ce-cli containerd.io
-    systemctl enable docker
-    systemctl start docker
+    dnf -y remove nano-default-editor
+    dnf -y install vim vim-default-editor git-subtree binwalk htop screen nmon jq python3-pyyaml wget openssl bc
+
+    # kpatch / kernel deps
+    dnf -y install git gcc kernel-devel elfutils elfutils-devel rpmdevtools pesign yum-utils zlib-devel binutils-devel newt-devel python-devel perl-ExtUtils-Embed audit-libs-devel numactl-devel pciutils-devel bison
+    dnf -y install kernel asciidoc bc hmaccalc net-tools xmlto ncurses-devel ccache
+    dnf -y --enablerepo base-debuginfo install kernel-debuginfo
+    dnf -y install fedpkg fedora-packager rpmdevtools ncurses-devel pesign grubby acl
+    dnf -y install bpftool dwarves gcc-plugin-devel glibc-static perl-generators
+    echo 'vagrant' >> /etc/pesign/users
+    /usr/libexec/pesign/pesign-authorize
+    ccache --max-size=5G
+
+    # container runtime
+    dnf -y module enable cri-o:1.24
+    dnf -y install cri-o cri-tools
+    systemctl enable crio
+    systemctl start crio
+
+    # download and install latest kubectl
+    wget -q -P /tmp "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+    install -o root -g root -m 0755 /tmp/kubectl /usr/local/bin/kubectl
+
+    # download and install latest golang
+    GO_VERSION=$(curl -s https://go.dev/VERSION?m=text)
+    wget -q -P /tmp https://go.dev/dl/${GO_VERSION}.linux-amd64.tar.gz
+    tar -C /usr/local -xzf /tmp/${GO_VERSION}.linux-amd64.tar.gz
+    rm /tmp/kubectl /tmp/${GO_VERSION}.linux-amd64.tar.gz
+
+    # coredns will not start if there is a localhost address in resolv.conf
+    systemctl disable systemd-resolved
+    systemctl stop systemd-resolved
+    rm /etc/resolv.conf
+    echo 'nameserver 1.1.1.1' > /etc/resolv.conf
+
+    # need ipv6 enabled for local-up-cluster.sh to work with default settings
+    sed -i 's/disable_ipv6 = 1/disable_ipv6 = 0/' /etc/sysctl.conf
+    sysctl --system
+
+    # setup vagrant home directory
+    su vagrant -c 'mkdir -p ~/go/bin ~/go/src'
+    su vagrant -c 'echo "export GOPATH=\\$HOME/go" >> ~/.bashrc'
+    su vagrant -c 'echo "export PATH=\\$PATH:\\$HOME/go/bin:/usr/local/go/bin" >> ~/.bashrc'
+    su vagrant -c 'cp /workspace/dotfiles/.vimrc ~/'
+    su vagrant -c 'cp /workspace/dotfiles/.screenrc ~/'
+    su vagrant -c 'ln -s /workspace ~/workspace'
   SHELL
 end
+

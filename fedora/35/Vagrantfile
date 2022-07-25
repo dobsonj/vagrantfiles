@@ -52,10 +52,10 @@ Vagrant.configure("2") do |config|
   config.vm.provider :libvirt do |libvirt|
     # https://github.com/vagrant-libvirt/vagrant-libvirt/blob/master/README.md
     libvirt.driver = "kvm"
-    libvirt.cpus = 4
+    libvirt.cpus = 8
     libvirt.memory = 8192
-    libvirt.nested = true
-    libvirt.volume_cache = "none"
+    #libvirt.nested = true
+    #libvirt.volume_cache = "none"
     #libvirt.random_hostname = true 
   end
 
@@ -68,6 +68,11 @@ Vagrant.configure("2") do |config|
     dnf -y groupinstall "Development Tools"
     dnf -y remove nano-default-editor
     dnf -y install vim vim-default-editor git-subtree binwalk htop screen nmon jq python3-pyyaml wget openssl
+
+    # kpatch deps
+    dnf -y install git gcc kernel-devel elfutils elfutils-devel rpmdevtools pesign yum-utils zlib-devel binutils-devel newt-devel python-devel perl-ExtUtils-Embed audit-libs-devel numactl-devel pciutils-devel bison
+    dnf -y --disablerepo '*updates' --enablerepo='fedora-debuginfo' install kernel kernel-headers kernel-debuginfo asciidoc bc hmaccalc net-tools xmlto ncurses-devel ccache
+    ccache --max-size=5G
 
     # container runtime
     dnf -y module enable cri-o:1.22
