@@ -1,0 +1,113 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+# All Vagrant configuration is done below. The "2" in Vagrant.configure
+# configures the configuration version (we support older styles for
+# backwards compatibility). Please don't change it unless you know what
+# you're doing.
+Vagrant.configure("2") do |config|
+  # The most common configuration options are documented and commented below.
+  # For a complete reference, please see the online documentation at
+  # https://docs.vagrantup.com.
+
+  # Every Vagrant development environment requires a box. You can search for
+  # boxes at https://vagrantcloud.com/search.
+  config.vm.box = "generic/ubuntu2204"
+  #config.vm.hostname = "ubuntu2204"
+  config.vm.define "ubuntu"
+
+  # Disable automatic box update checking. If you disable this, then
+  # boxes will only be checked for updates when the user runs
+  # `vagrant box outdated`. This is not recommended.
+  # config.vm.box_check_update = false
+
+  # Create a forwarded port mapping which allows access to a specific port
+  # within the machine from a port on the host machine. In the example below,
+  # accessing "localhost:8080" will access port 80 on the guest machine.
+  # NOTE: This will enable public access to the opened port
+  # config.vm.network "forwarded_port", guest: 80, host: 8080
+
+  # Create a forwarded port mapping which allows access to a specific port
+  # within the machine from a port on the host machine and only allow access
+  # via 127.0.0.1 to disable public access
+  # config.vm.network "forwarded_port", guest: 80, host: 8080, host_ip: "127.0.0.1"
+
+  # Create a private network, which allows host-only access to the machine
+  # using a specific IP.
+  # config.vm.network "private_network", ip: "192.168.33.10"
+
+  # Create a public network, which generally matched to bridged network.
+  # Bridged networks make the machine appear as another physical device on
+  # your network.
+  # config.vm.network "public_network"
+
+  # Share an additional folder to the guest VM. The first argument is
+  # the path on the host to the actual folder. The second argument is
+  # the path on the guest to mount the folder. And the optional third
+  # argument is a set of non-required options.
+  config.vm.synced_folder "#{Dir.home}/workspace", "/workspace", type: "nfs", nfs_udp: false
+
+  # Provider-specific configuration so you can fine-tune various
+  # backing providers for Vagrant. These expose provider-specific options.
+  config.vm.provider :libvirt do |libvirt|
+    # https://github.com/vagrant-libvirt/vagrant-libvirt/blob/master/README.md
+    libvirt.driver = "kvm"
+    libvirt.cpus = 4
+    libvirt.memory = 8192
+    #libvirt.nested = true
+    #libvirt.volume_cache = "none"
+    #libvirt.random_hostname = true 
+  end
+
+  # Enable provisioning with a shell script. Additional provisioners such as
+  # Ansible, Chef, Docker, Puppet and Salt are also available. Please see the
+  # documentation for more information about their specific syntax and use.
+  config.vm.provision "shell", inline: <<-SHELL
+    # install essential build tools
+    apt-get update
+    apt-get install -y build-essential containerd gcc jq net-tools
+
+    # download and install latest kubectl
+    wget -q -P /tmp "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+    install -o root -g root -m 0755 /tmp/kubectl /usr/local/bin/kubectl
+
+    # download and install latest golang
+    GO_VERSION=$(curl -s https://go.dev/VERSION?m=text)
+    wget -q -P /tmp https://go.dev/dl/${GO_VERSION}.linux-amd64.tar.gz
+    tar -C /usr/local -xzf /tmp/${GO_VERSION}.linux-amd64.tar.gz
+    rm /tmp/kubectl /tmp/${GO_VERSION}.linux-amd64.tar.gz
+
+    # coredns will not start if there is a localhost address in resolv.conf
+    systemctl disable systemd-resolved
+    systemctl stop systemd-resolved
+    rm /etc/resolv.conf
+    echo 'nameserver 1.1.1.1' > /etc/resolv.conf
+
+    # need ipv6 enabled for local-up-cluster.sh to work with default settings
+    sed -i 's/disable_ipv6 = 1/disable_ipv6 = 0/' /etc/sysctl.conf
+    sysctl --system
+
+    # setup root home directory
+    mkdir -p ~/go/bin ~/go/src
+    echo "export GOPATH=\$HOME/go" >> ~/.bashrc
+    echo "export PATH=\$PATH:\$HOME/go/bin:/usr/local/go/bin" >> ~/.bashrc
+    cp /workspace/dotfiles/.vimrc ~/
+    cp /workspace/dotfiles/.screenrc ~/
+    ln -s /workspace ~/workspace
+
+    # install delve debugger (root only, to attach to root processes like kubelet)
+    export GOPATH=$HOME/go
+    #/usr/local/go/bin/go install github.com/go-delve/delve/cmd/dlv@latest
+
+    # setup vagrant home directory
+    su vagrant -c 'mkdir -p ~/go/bin ~/go/src'
+    su vagrant -c 'echo "export GOPATH=\\$HOME/go" >> ~/.bashrc'
+    su vagrant -c 'echo "export PATH=\\$PATH:\\$HOME/go/bin:/usr/local/go/bin" >> ~/.bashrc'
+    su vagrant -c 'cp /workspace/dotfiles/.vimrc ~/'
+    su vagrant -c 'cp /workspace/dotfiles/.screenrc ~/'
+    su vagrant -c 'ln -s /workspace ~/workspace'
+
+    # install kubetest
+    #su vagrant -c 'cd ~/go/src && git clone https://github.com/kubernetes/test-infra.git && cd test-infra && GOPATH=$HOME/go GO111MODULE=on /usr/local/go/bin/go install ./kubetest'
+  SHELL
+end
