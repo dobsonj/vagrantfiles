@@ -57,6 +57,8 @@ Vagrant.configure("2") do |config|
     #libvirt.nested = true
     #libvirt.volume_cache = "none"
     #libvirt.random_hostname = true 
+    libvirt.storage :file, :size => '20G' # test disk / scratch space
+    libvirt.storage :file, :size => '20G' # test disk / scratch space
   end
 
   # Enable provisioning with a shell script. Additional provisioners such as
